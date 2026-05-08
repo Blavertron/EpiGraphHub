@@ -1,56 +1,60 @@
 import requests
 import pandas as pd
-from datetime import datetime
 import os
+from datetime import datetime, timedelta
 
-def fetch_who_global_data():
-    """Fetch latest WHO global COVID-19 daily data."""
-    url = 'https://srhdpeuwpubsa.blob.core.windows.net/whdh/COVID/WHO-COVID-19-global-daily-data.csv'
+def fetch_owid():
+    """Fetch latest OWID COVID-19 data"""
+    url = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv"
+    print("Fetching OWID COVID data...")
     try:
-        print(f'Fetching WHO global data from {url}...')
-        df = pd.read_csv(url)
-        print(f'Success: fetched {len(df):,} rows of WHO data. Columns: {list(df.columns)}')
-        # Ensure date column is datetime
-        if 'Date_reported' in df.columns:
-            df['Date_reported'] = pd.to_datetime(df['Date_reported'])
-        return df
+        df = pd.read_csv(url, parse_dates=['date'])
+        print(f"Fetched {len(df):,} rows of OWID data")
+        
+        # Keep relevant columns
+        cols = ['iso_code', 'continent', 'location', 'date', 'total_cases', 'new_cases', 
+                'new_cases_smoothed', 'total_deaths', 'new_deaths', 'new_deaths_smoothed',
+                'new_vaccinations_smoothed', 'population', 'people_vaccinated_per_hundred']
+        
+        df = df[ [c for c in cols if c in df.columns] ].copy()
+        
+        # Filter to last 6 months for signals
+        cutoff = datetime.now() - timedelta(days=180)
+        recent_df = df[df['date'] >= cutoff].copy()
+        
+        return recent_df
     except Exception as e:
-        print(f'WHO global data fetch failed: {e}')
+        print(f"OWID fetch failed: {e}")
         return pd.DataFrame()
 
-def fetch_owid_data():
-    """Fetch latest OWID COVID data (more comprehensive)."""
-    url = 'https://covid.ourworldindata.org/data/owid-covid-data.csv'
-    try:
-        print(f'Fetching OWID data from {url}...')
-        # Use low_memory=False for large file
-        df = pd.read_csv(url, low_memory=False)
-        print(f'Success: fetched {len(df):,} rows of OWID data.')
-        return df
-    except Exception as e:
-        print(f'OWID data fetch failed: {e}')
-        return pd.DataFrame()
+def create_events():
+    """Create recent events placeholder"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    events_data = [
+        {
+            'date': today,
+            'title': 'Daily Epi Update - OWID data refreshed',
+            'description': 'COVID-19 and epidemiological data updated from Our World in Data. Check dashboard for latest visualizations.',
+            'source': 'Our World in Data'
+        }
+    ]
+    return pd.DataFrame(events_data)
 
-if __name__ == '__main__':
-    print('Starting daily epi update...')
+if __name__ == "__main__":
+    print("Starting upgraded daily epi update with OWID...")
+    os.makedirs("data", exist_ok=True)
     
-    # Fetch primary data sources
-    who_df = fetch_who_global_data()
-    owid_df = fetch_owid_data()
+    signals_df = fetch_owid()
     
-    os.makedirs('data', exist_ok=True)
-    
-    # Save primary signals (WHO daily is reliable and current)
-    if not who_df.empty:
-        who_df.to_csv('data/global_signals.csv', index=False)
-        print('Saved updated global_signals.csv from WHO data')
+    if not signals_df.empty:
+        signals_df.to_csv("data/global_signals.csv", index=False)
+        print(f"Saved global_signals.csv with {len(signals_df):,} rows")
     else:
-        print('No WHO data - keeping existing global_signals.csv')
+        print("No new signals - keeping existing files")
     
-    # Save full OWID data as well (for richer dashboard use)
-    if not owid_df.empty:
-        owid_df.to_csv('data/owid-covid-data.csv', index=False)
-        print('Saved full owid-covid-data.csv')
+    # Events
+    events_df = create_events()
+    events_df.to_csv("data/significant_events.csv", index=False)
+    print("Saved significant_events.csv")
     
-    # Optional: create a lightweight world aggregates if needed
-    print(f'Daily epi update completed successfully at {datetime.now()}')
+    print(f"Daily epi update completed successfully at {datetime.now()}")
