@@ -1,67 +1,56 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 
-def fetch_delphi():
+def fetch_who_global_data():
+    """Fetch latest WHO global COVID-19 daily data."""
+    url = 'https://srhdpeuwpubsa.blob.core.windows.net/whdh/COVID/WHO-COVID-19-global-daily-data.csv'
     try:
-        url = "https://api.delphi.cmu.edu/epidata/api.php"
-        # Use recent dates only
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')  # last year
-        params = {
-            "source": "covidcast",
-            "signal": "fb-survey:smoothed_cli",
-            "geo_type": "country",
-            "geo_id": "*",
-            "time_type": "day",
-            "time_values": f"{start_date}:{end_date}"
-        }
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
-        json_data = r.json()
-        if 'epidata' in json_data and json_data.get('epidata'):
-            data = pd.DataFrame(json_data['epidata'])
-            print(f"Delphi: fetched {len(data)} rows")
-            return data
-        else:
-            print("Delphi: No epidata returned")
-            return pd.DataFrame()
+        print(f'Fetching WHO global data from {url}...')
+        df = pd.read_csv(url)
+        print(f'Success: fetched {len(df):,} rows of WHO data. Columns: {list(df.columns)}')
+        # Ensure date column is datetime
+        if 'Date_reported' in df.columns:
+            df['Date_reported'] = pd.to_datetime(df['Date_reported'])
+        return df
     except Exception as e:
-        print(f"Delphi fetch failed (expected for deprecated API): {e}")
+        print(f'WHO global data fetch failed: {e}')
         return pd.DataFrame()
 
-def fetch_who_outbreaks():
+def fetch_owid_data():
+    """Fetch latest OWID COVID data (more comprehensive)."""
+    url = 'https://covid.ourworldindata.org/data/owid-covid-data.csv'
     try:
-        # Note: WHO endpoint may need update; current may not be public JSON
-        r = requests.get("https://www.who.int/api/news/diseaseoutbreaknews", timeout=30)
-        r.raise_for_status()
-        json_data = r.json()
-        events = pd.DataFrame(json_data)
-        print(f"WHO: fetched {len(events)} events")
-        return events
+        print(f'Fetching OWID data from {url}...')
+        # Use low_memory=False for large file
+        df = pd.read_csv(url, low_memory=False)
+        print(f'Success: fetched {len(df):,} rows of OWID data.')
+        return df
     except Exception as e:
-        print(f"WHO fetch failed: {e}")
+        print(f'OWID data fetch failed: {e}')
         return pd.DataFrame()
 
-if __name__ == "__main__":
-    print("Starting daily epi update...")
-    df_signals = fetch_delphi()
-    df_events = fetch_who_outbreaks()
+if __name__ == '__main__':
+    print('Starting daily epi update...')
     
-    os.makedirs("data", exist_ok=True)
+    # Fetch primary data sources
+    who_df = fetch_who_global_data()
+    owid_df = fetch_owid_data()
     
-    # Only save if we have data (preserve existing otherwise)
-    if not df_signals.empty:
-        df_signals.to_csv("data/global_signals.csv", index=False)
-        print("Saved global_signals.csv")
+    os.makedirs('data', exist_ok=True)
+    
+    # Save primary signals (WHO daily is reliable and current)
+    if not who_df.empty:
+        who_df.to_csv('data/global_signals.csv', index=False)
+        print('Saved updated global_signals.csv from WHO data')
     else:
-        print("No new signals data - keeping existing")
+        print('No WHO data - keeping existing global_signals.csv')
     
-    if not df_events.empty:
-        df_events.to_csv("data/significant_events.csv", index=False)
-        print("Saved significant_events.csv")
-    else:
-        print("No new events data - keeping existing")
+    # Save full OWID data as well (for richer dashboard use)
+    if not owid_df.empty:
+        owid_df.to_csv('data/owid-covid-data.csv', index=False)
+        print('Saved full owid-covid-data.csv')
     
-    print(f"Daily epi update completed at {datetime.now()}")
+    # Optional: create a lightweight world aggregates if needed
+    print(f'Daily epi update completed successfully at {datetime.now()}')
