@@ -16,9 +16,9 @@ def fetch_owid():
                 'new_cases_smoothed', 'total_deaths', 'new_deaths', 'new_deaths_smoothed',
                 'new_vaccinations_smoothed', 'population', 'people_vaccinated_per_hundred']
         
-        df = df[ [c for c in cols if c in df.columns] ].copy()
+        df = df[[c for c in cols if c in df.columns]].copy()
         
-        # Filter to last 6 months for signals
+        # Filter to last 6 months to keep file size manageable
         cutoff = datetime.now() - timedelta(days=180)
         recent_df = df[df['date'] >= cutoff].copy()
         
@@ -27,34 +27,44 @@ def fetch_owid():
         print(f"OWID fetch failed: {e}")
         return pd.DataFrame()
 
-def create_events():
-    """Create recent events placeholder"""
-    today = datetime.now().strftime('%Y-%m-%d')
-    events_data = [
-        {
+def fetch_who_events():
+    """Attempt to fetch recent WHO Disease Outbreak News"""
+    try:
+        r = requests.get("https://www.who.int/api/news/diseaseoutbreaknews", timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        df = pd.DataFrame(data)
+        print(f"WHO events: fetched {len(df)} items")
+        return df
+    except Exception as e:
+        print(f"WHO events fetch failed (using placeholder): {e}")
+        # Fallback
+        today = datetime.now().strftime('%Y-%m-%d')
+        return pd.DataFrame([{
             'date': today,
-            'title': 'Daily Epi Update - OWID data refreshed',
-            'description': 'COVID-19 and epidemiological data updated from Our World in Data. Check dashboard for latest visualizations.',
-            'source': 'Our World in Data'
-        }
-    ]
-    return pd.DataFrame(events_data)
+            'title': 'Daily Epi Update - OWID refreshed',
+            'description': 'COVID-19 data updated from Our World in Data. WHO outbreaks fetch had temporary issue.',
+            'source': 'Our World in Data / WHO'
+        }])
 
-if __name__ == "__main__":
+def main():
     print("Starting upgraded daily epi update with OWID...")
     os.makedirs("data", exist_ok=True)
     
+    # Main signals from OWID
     signals_df = fetch_owid()
-    
     if not signals_df.empty:
         signals_df.to_csv("data/global_signals.csv", index=False)
-        print(f"Saved global_signals.csv with {len(signals_df):,} rows")
+        print(f"✅ Saved global_signals.csv with {len(signals_df):,} rows (last 6 months)")
     else:
-        print("No new signals - keeping existing files")
+        print("⚠️  No new signals data - keeping existing")
     
     # Events
-    events_df = create_events()
+    events_df = fetch_who_events()
     events_df.to_csv("data/significant_events.csv", index=False)
-    print("Saved significant_events.csv")
+    print("✅ Saved significant_events.csv")
     
-    print(f"Daily epi update completed successfully at {datetime.now()}")
+    print(f"🎉 Daily epi update completed successfully at {datetime.now()}")
+
+if __name__ == "__main__":
+    main()
