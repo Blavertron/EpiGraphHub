@@ -1,3 +1,0 @@
-This file was renamed to disable the heavy original CI workflow that was causing constant failures on main branch.
-
-The only workflow we currently need is update-epi.yml for daily epidemiological data updates.
